@@ -1,26 +1,178 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f1f5f9;
+  --foreground: #1e293b;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-sans: var(--font-vazirmatn), system-ui, sans-serif;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+}
+
+.leaflet-container,
+.maplibregl-map,
+.maplibregl-marker,
+.vehicle-status-tooltip,
+.vehicle-status-tooltip-status,
+.vehicle-status-tooltip-desc {
+  font-family: var(--font-vazirmatn), var(--font-sans), Tahoma, sans-serif !important;
+}
+
+.map-wrap,
+.map-surface {
+  width: 100%;
+  height: 100%;
+}
+
+.maplibregl-marker:has(.vehicle-map-marker),
+.maplibregl-marker.vehicle-marker-wrapper {
+  z-index: 2 !important;
+}
+
+.maplibregl-marker:has(.vehicle-map-marker.is-selected) {
+  z-index: 3 !important;
+}
+
+.maplibregl-marker.vehicle-tooltip-marker,
+.maplibregl-marker:has(.vehicle-status-tooltip) {
+  z-index: 20 !important;
+}
+
+.maplibregl-marker:has(.vehicle-status-tooltip.is-selected) {
+  z-index: 21 !important;
+}
+
+.vehicle-marker-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.vehicle-marker-rotator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: center center;
+}
+
+.vehicle-map-marker {
+  display: block;
+  user-select: none;
+}
+
+.vehicle-marker-pulse {
+  animation: vehicle-pulse 2s infinite;
+}
+
+.vehicle-status-tooltip {
+  position: relative;
+  min-width: 148px;
+  max-width: 220px;
+  pointer-events: none;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.14);
+  padding: 7px 10px;
+  direction: rtl;
+  text-align: right;
+  line-height: 1.4;
+  white-space: normal;
+}
+
+.vehicle-status-tooltip.is-selected {
+  border-color: #93c5fd;
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.22);
+}
+
+.vehicle-status-tooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: #ffffff;
+}
+
+.vehicle-status-tooltip-status {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.vehicle-status-tooltip.is-moving .vehicle-status-tooltip-status {
+  color: #047857;
+}
+
+.vehicle-status-tooltip.is-stopped .vehicle-status-tooltip-status {
+  color: #b45309;
+}
+
+.vehicle-status-tooltip.is-offline .vehicle-status-tooltip-status {
+  color: #b91c1c;
+}
+
+.vehicle-status-tooltip-desc {
+  margin-top: 3px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.vehicle-tooltip-popup .maplibregl-popup-content {
+  direction: rtl;
+  text-align: right;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  padding: 10px 14px;
+  font-family: var(--font-sans);
+}
+
+.vehicle-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+.vehicle-tooltip {
+  direction: rtl;
+  text-align: right;
+  border-radius: 12px !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
+  padding: 8px 12px !important;
+}
+
+.vehicle-tooltip::before {
+  border-top-color: #e2e8f0 !important;
+}
+
+@keyframes vehicle-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
