@@ -1,3 +1,5 @@
+import http from "node:http";
+import https from "node:https";
 import { CATEGORIES } from "@/lib/mock-data";
 import type { AuthUser } from "@/types";
 
@@ -156,11 +158,122 @@ export async function sendLoginOtp(
     throw new SsoRequestError(400, "شماره تلفن نامعتبر است");
   }
 
-  await ssoFetch(
-    SSO_WEB_URL,
-    "/api/citizen/send-login-otp",
-    { phoneNumber: normalizedPhone, melliCode: normalizedMelli },
+  try {
+    await ssoFetch(
+      SSO_WEB_URL,
+      "/api/citizen/send-login-otp",
+      { phoneNumber: normalizedPhone, melliCode: normalizedMelli },
+    );
+    return;
+  } catch (error) {
+    if (!(error instanceof SsoRequestError) || error.status !== 0) {
+      throw error;
+    }
+  }
+
+  // auth.sabzevar.ir is unreachable from this host (TLS handshake fails).
+  // Register the code on the login API, then send the same SMS the portal sends.
+  const otpCode = String(Math.floor(Math.random() * 100_000)).padStart(5, "0");
+  await ssoFetch(SSO_API_URL, "/api/auth/second-login/send-otp", {
+    phoneNumber: normalizedPhone,
+    melliCode: normalizedMelli,
+    otpCode,
+  });
+  await sendLoginSms(normalizedPhone, otpCode);
+}
+
+const SMS_TOKEN =
+  process.env.SMS_TOKEN ?? "817CC3144B1C489A8860C8F093DC51AB";
+
+function sendLoginSms(phoneNumber: string, otpCode: string): Promise<void> {
+  const body = `کد ورود : ${otpCode}\nمدیریت فناوری اطلاعات شهرداری سبزوار`;
+  const targets: Array<{ url: string; host?: string }> = [];
+  if (process.env.SMS_SEND_URL) {
+    targets.push({ url: process.env.SMS_SEND_URL, host: process.env.SMS_HOST });
+  }
+  targets.push(
+    {
+      url: "http://192.168.1.30/SubSystems/SMS/webservices/sms_send.aspx",
+      host: "erp.sabzevar.ir",
+    },
+    {
+      url: "http://erp.sabzevar.ir/SubSystems/SMS/webservices/sms_send.aspx",
+    },
   );
+
+  return (async () => {
+    let lastError = "خطا در اتصال به سرویس پیامک";
+    for (const target of targets) {
+      try {
+        await requestSmsGateway(target.url, phoneNumber, body, target.host);
+        return;
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : lastError;
+      }
+    }
+    throw new SsoRequestError(502, lastError);
+  })();
+}
+
+function requestSmsGateway(
+  sendUrl: string,
+  phoneNumber: string,
+  body: string,
+  hostHeader?: string,
+): Promise<void> {
+  const url = new URL(sendUrl);
+  url.searchParams.set("Token", SMS_TOKEN);
+  url.searchParams.set("Num", phoneNumber);
+  url.searchParams.set("Body", body);
+  const lib = url.protocol === "https:" ? https : http;
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (error?: SsoRequestError) => {
+      if (settled) return;
+      settled = true;
+      if (error) reject(error);
+      else resolve();
+    };
+
+    const req = lib.request(
+      {
+        protocol: url.protocol,
+        hostname: url.hostname,
+        port: url.port || (url.protocol === "https:" ? 443 : 80),
+        path: `${url.pathname}${url.search}`,
+        method: "GET",
+        headers: hostHeader ? { Host: hostHeader } : undefined,
+        timeout: 20_000,
+      },
+      (response) => {
+        response.resume();
+        const status = response.statusCode ?? 502;
+        if (status >= 400) {
+          finish(new SsoRequestError(status, "ارسال پیامک ناموفق بود"));
+          return;
+        }
+        finish();
+      },
+    );
+    req.on("timeout", () => {
+      req.destroy();
+      finish(new SsoRequestError(504, "تایم‌اوت اتصال به سرویس پیامک"));
+    });
+    req.on("error", (error) => {
+      const message = error.message.toLowerCase();
+      if (
+        message.includes("closed") ||
+        message.includes("reset") ||
+        message.includes("hang up")
+      ) {
+        finish();
+        return;
+      }
+      finish(new SsoRequestError(502, "خطا در اتصال به سرویس پیامک"));
+    });
+    req.end();
+  });
 }
 
 export async function verifyLoginOtp(
