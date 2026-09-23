@@ -146,10 +146,14 @@ export async function lookupPhones(melliCode: string): Promise<PhoneOption[]> {
   return phones;
 }
 
+/**
+ * Portal sends the SMS when auth.sabzevar.ir is reachable.
+ * Otherwise the code is registered on the login API and the caller must send it.
+ */
 export async function sendLoginOtp(
   melliCode: string,
   phoneNumber: string,
-): Promise<void> {
+): Promise<{ phoneNumber: string; otpCode: string } | null> {
   const normalizedMelli = assertAllowedMelli(melliCode);
   const normalizedPhone = normalizeDigits(phoneNumber);
   if (normalizedPhone.length < 10) {
@@ -162,81 +166,20 @@ export async function sendLoginOtp(
       "/api/citizen/send-login-otp",
       { phoneNumber: normalizedPhone, melliCode: normalizedMelli },
     );
-    return;
+    return null;
   } catch (error) {
     if (!(error instanceof SsoRequestError) || error.status !== 0) {
       throw error;
     }
   }
 
-  // auth.sabzevar.ir is unreachable from this host (TLS handshake fails).
-  // Register the code on the login API, then send the same SMS the portal sends.
   const otpCode = String(Math.floor(Math.random() * 100_000)).padStart(5, "0");
   await ssoFetch(SSO_API_URL, "/api/auth/second-login/send-otp", {
     phoneNumber: normalizedPhone,
     melliCode: normalizedMelli,
     otpCode,
   });
-  await sendLoginSms(normalizedPhone, otpCode);
-}
-
-const SMS_TOKEN =
-  process.env.SMS_TOKEN ?? "817CC3144B1C489A8860C8F093DC51AB";
-
-function sendLoginSms(phoneNumber: string, otpCode: string): Promise<void> {
-  const body = `کد ورود : ${otpCode}\nمدیریت فناوری اطلاعات شهرداری سبزوار`;
-  const targets = [
-    process.env.SMS_SEND_URL,
-    "http://erp.sabzevar.ir/SubSystems/SMS/webservices/sms_send.aspx",
-    "http://192.168.1.30/SubSystems/SMS/webservices/sms_send.aspx",
-  ].filter((url): url is string => Boolean(url));
-
-  return (async () => {
-    let lastError = "خطا در اتصال به سرویس پیامک";
-    for (const target of targets) {
-      try {
-        await requestSmsGateway(target, phoneNumber, body);
-        return;
-      } catch (error) {
-        lastError = error instanceof Error ? error.message : lastError;
-      }
-    }
-    throw new SsoRequestError(502, lastError);
-  })();
-}
-
-async function requestSmsGateway(
-  sendUrl: string,
-  phoneNumber: string,
-  body: string,
-): Promise<void> {
-  const url = new URL(sendUrl);
-  url.searchParams.set("Token", SMS_TOKEN);
-  url.searchParams.set("Num", phoneNumber);
-  url.searchParams.set("Body", body);
-
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      method: "GET",
-      cache: "no-store",
-      signal: AbortSignal.timeout(20_000),
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message.toLowerCase() : "";
-    if (
-      message.includes("closed") ||
-      message.includes("reset") ||
-      message.includes("hang up")
-    ) {
-      return;
-    }
-    throw new SsoRequestError(502, "خطا در اتصال به سرویس پیامک");
-  }
-
-  if (!response.ok) {
-    throw new SsoRequestError(response.status, "ارسال پیامک ناموفق بود");
-  }
+  return { phoneNumber: normalizedPhone, otpCode };
 }
 
 export async function verifyLoginOtp(
