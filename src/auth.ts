@@ -1,7 +1,14 @@
-import NextAuth from "next-auth";
+import NextAuth, { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import type { AuthUser } from "@/types";
-import { findUserByCredentials } from "@/lib/mock-data";
+import { SsoRequestError, verifyLoginOtp } from "@/lib/sso-login";
+
+class SsoLoginError extends CredentialsSignin {
+  constructor(message: string) {
+    super();
+    this.code = message;
+  }
+}
 
 declare module "next-auth" {
   interface Session {
@@ -18,22 +25,24 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     Credentials({
       name: "SSO",
       credentials: {
-        username: { label: "نام کاربری", type: "text" },
-        password: { label: "رمز عبور", type: "password" },
+        melliCode: { label: "کد ملی", type: "text" },
+        phoneNumber: { label: "شماره همراه", type: "text" },
+        otpCode: { label: "کد تایید", type: "text" },
       },
       authorize: async (credentials) => {
-        const username = credentials?.username as string;
-        const password = credentials?.password as string;
-
-        if (!username || !password) return null;
-
-        const user = findUserByCredentials(username, password);
-        if (!user) return null;
-
-        return {
-          ...user,
-          isAdmin: user.role === "admin",
-        };
+        try {
+          return await verifyLoginOtp(
+            String(credentials?.melliCode ?? ""),
+            String(credentials?.phoneNumber ?? ""),
+            String(credentials?.otpCode ?? ""),
+          );
+        } catch (error) {
+          const message =
+            error instanceof SsoRequestError
+              ? error.message
+              : "کد تایید نامعتبر است";
+          throw new SsoLoginError(message);
+        }
       },
     }),
   ],

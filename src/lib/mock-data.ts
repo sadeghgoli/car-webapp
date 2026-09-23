@@ -1,4 +1,4 @@
-import type { AuthUser, MapCoordinate, Vehicle, VehicleCategory } from "@/types";
+import type { MapCoordinate, Vehicle, VehicleCategory } from "@/types";
 
 export const CATEGORIES: VehicleCategory[] = [
   { id: "137", name: "خودروهای سامانه ۱۳۷", color: "#2563eb", icon: "137" },
@@ -6,30 +6,6 @@ export const CATEGORIES: VehicleCategory[] = [
   { id: "city-services", name: "خدمات شهری", color: "#d97706", icon: "city" },
   { id: "green-space", name: "فضای سبز", color: "#16a34a", icon: "green" },
   { id: "fire", name: "آتش‌نشانی", color: "#dc2626", icon: "fire" },
-];
-
-export const MOCK_USERS: AuthUser[] = [
-  {
-    id: "user-137",
-    name: "علی محمدی",
-    email: "ali.mohammadi@municipality.ir",
-    role: "viewer",
-    categoryIds: ["137"],
-  },
-  {
-    id: "user-multi",
-    name: "زهرا احمدی",
-    email: "zahra.ahmadi@municipality.ir",
-    role: "viewer",
-    categoryIds: ["137", "transport"],
-  },
-  {
-    id: "user-admin",
-    name: "رضا کریمی",
-    email: "admin@municipality.ir",
-    role: "admin",
-    categoryIds: CATEGORIES.map((c) => c.id),
-  },
 ];
 
 const ROUTE_PAIRS: Array<{
@@ -190,16 +166,3 @@ function createVehicle(def: (typeof ROUTE_PAIRS)[number]): Vehicle {
 }
 
 export const MOCK_VEHICLES: Vehicle[] = ROUTE_PAIRS.map(createVehicle);
-
-export function findUserByCredentials(username: string, password: string): AuthUser | null {
-  const userMap: Record<string, { password: string; userId: string }> = {
-    ali: { password: "137", userId: "user-137" },
-    zahra: { password: "multi", userId: "user-multi" },
-    admin: { password: "admin", userId: "user-admin" },
-  };
-
-  const entry = userMap[username];
-  if (!entry || entry.password !== password) return null;
-
-  return MOCK_USERS.find((u) => u.id === entry.userId) ?? null;
-}

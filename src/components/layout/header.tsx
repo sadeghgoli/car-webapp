@@ -50,8 +50,8 @@ export function Header() {
             </div>
             <div className="text-right">
               <p className="text-sm font-semibold text-slate-800">{user.name}</p>
-              <p className="text-xs text-slate-500">
-                {user.isAdmin ? "مدیر سیستم" : "کاربر"}
+              <p className="text-xs text-slate-500" dir="ltr">
+                {user.email}
               </p>
             </div>
             <ChevronDown className={cn("h-4 w-4 text-slate-400 transition-transform", menuOpen && "rotate-180")} />

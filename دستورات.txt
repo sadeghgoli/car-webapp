@@ -1,0 +1,44 @@
+1. ساخت سرویس
+sudo nano /etc/systemd/system/car-webapp.service
+
+محتوا:
+
+[Unit]
+Description=Sabzevar Car WebApp Next.js
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/car-webapp
+
+Environment=NODE_ENV=development
+Environment=CI=1
+Environment=BROWSER=none
+
+ExecStart=/usr/bin/npm run dev
+
+Restart=always
+RestartSec=5
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+2. فعال‌سازی و اجرا
+systemctl daemon-reload
+systemctl enable car-webapp.service
+systemctl start car-webapp.service
+3. بررسی وضعیت
+systemctl status car-webapp.service --no-pager
+4. بررسی پورت 5041
+ss -lntp | grep :5041
+5. مشاهده لاگ زنده
+journalctl -u car-webapp.service -f
+
+نکته: چون npm run dev خودش next dev -p 5041 را اجرا می‌کند، نیازی نیست --port 5041 به ExecStart اضافه کنیم.
+
+اگر می‌خواهی بعد از git pull هم فقط یک دستور بزنی:
+
+systemctl restart car-webapp.service
