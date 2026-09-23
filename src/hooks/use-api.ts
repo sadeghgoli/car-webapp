@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { Vehicle, VehicleCategory, VehicleDetail } from "@/types";
 
 async function fetchJson<T>(url: string): Promise<T> {
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
   if (!res.ok) throw new Error(`Request failed: ${res.status}`);
   return res.json();
 }

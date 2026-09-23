@@ -27,7 +27,10 @@ export async function GET(request: Request) {
     `?overview=full&geometries=geojson&steps=false`;
 
   try {
-    const response = await fetch(url, { next: { revalidate: 3600 } });
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(8000),
+      next: { revalidate: 3600 },
+    });
     if (!response.ok) {
       throw new Error(`OSRM HTTP ${response.status}`);
     }

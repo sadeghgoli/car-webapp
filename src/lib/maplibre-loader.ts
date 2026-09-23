@@ -30,20 +30,23 @@ export function ensureLocalMapLibre(): Promise<MaplibreNamespace> {
       document.head.appendChild(link);
     }
 
+    const fail = (error: Error) => {
+      maplibreReady = null;
+      reject(error);
+    };
+
     const existingScript = document.getElementById(scriptId) as HTMLScriptElement | null;
-    if (existingScript && window.maplibregl) {
-      resolve(window.maplibregl);
-      return;
-    }
-
     const script = existingScript ?? document.createElement("script");
-    script.id = scriptId;
-    script.src = "/js/maplibre-gl.min.js";
-    script.async = true;
+    const timer = window.setTimeout(() => {
+      script.remove();
+      fail(new Error("maplibre script timed out"));
+    }, 12000);
 
-    script.onload = () => {
+    const finish = () => {
+      window.clearTimeout(timer);
       if (!window.maplibregl) {
-        reject(new Error("maplibregl was not attached to window"));
+        script.remove();
+        fail(new Error("maplibregl was not attached to window"));
         return;
       }
 
@@ -55,9 +58,17 @@ export function ensureLocalMapLibre(): Promise<MaplibreNamespace> {
       resolve(window.maplibregl);
     };
 
-    script.onerror = () => reject(new Error("failed to load local maplibre script"));
+    script.addEventListener("load", finish, { once: true });
+    script.addEventListener("error", () => {
+      window.clearTimeout(timer);
+      script.remove();
+      fail(new Error("failed to load local maplibre script"));
+    }, { once: true });
 
     if (!existingScript) {
+      script.id = scriptId;
+      script.src = "/js/maplibre-gl.min.js";
+      script.async = true;
       document.body.appendChild(script);
     }
   });

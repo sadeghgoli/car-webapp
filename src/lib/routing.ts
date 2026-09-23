@@ -40,7 +40,9 @@ export async function fetchDrivingRoute(
   });
 
   try {
-    const response = await fetch(`/api/routing?${params.toString()}`);
+    const response = await fetch(`/api/routing?${params.toString()}`, {
+      signal: AbortSignal.timeout(12000),
+    });
     if (!response.ok) {
       throw new Error(`Routing HTTP ${response.status}`);
     }

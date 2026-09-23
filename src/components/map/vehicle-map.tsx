@@ -5,6 +5,7 @@ import type { Vehicle, VehicleCategory, VehicleRoute } from "@/types";
 import { useDashboardStore, filterVehiclesByLayers } from "@/stores/dashboard-store";
 import { useVehicleRoutes } from "@/hooks/use-vehicle-routes";
 import { ensureLocalMapLibre, type MaplibreNamespace } from "@/lib/maplibre-loader";
+import sabzevarStyle from "../../../public/style.json";
 import { SABZEVAR_MAP, FALLBACK_STYLE, appendTileKey } from "@/lib/map-config";
 import { interpolateAlongRoute } from "@/lib/route-geometry";
 import { escapeHtml, getStatusLabel } from "@/lib/utils";
@@ -170,6 +171,7 @@ export function VehicleMap({
   const animationRef = useRef<number | null>(null);
 
   const [mapReady, setMapReady] = useState(false);
+  const [styleEpoch, setStyleEpoch] = useState(0);
   const activeLayerIds = useDashboardStore((s) => s.activeLayerIds);
   const selectedVehicleId = useDashboardStore((s) => s.selectedVehicleId);
   const selectVehicle = useDashboardStore((s) => s.selectVehicle);
@@ -184,7 +186,7 @@ export function VehicleMap({
     [filteredVehicles],
   );
 
-  const { routes, loading: routesLoading } = useVehicleRoutes(filteredVehicles, categories);
+  const { routes } = useVehicleRoutes(filteredVehicles, categories);
 
   const routeMap = useMemo(
     () => new Map(routes.map((r) => [r.vehicleId, r])),
@@ -199,82 +201,110 @@ export function VehicleMap({
 
     void ensureLocalMapLibre()
       .then((maplibregl) => {
-        if (!mapContainerRef.current || disposed || mapRef.current) return;
+        if (!mapContainerRef.current || disposed) return;
 
         maplibreRef.current = maplibregl;
 
-        const map = new maplibregl.Map({
-          container: mapContainerRef.current,
-          style: SABZEVAR_MAP.styleUrl,
-          center: SABZEVAR_MAP.defaultCenter,
-          zoom: SABZEVAR_MAP.defaultZoom,
-          pitch: SABZEVAR_MAP.pitch,
-          bearing: SABZEVAR_MAP.bearing,
-          attributionControl: false,
-          dragRotate: false,
-          touchPitch: false,
-          transformRequest: (url: string, resourceType?: string) => {
-            if (resourceType === "Tile" && !url.includes("geo.sabzevar.ir")) {
-              return { url: appendTileKey(url) };
-            }
-            return { url };
-          },
-        });
-
-        mapRef.current = map;
-        map.addControl(new maplibregl.NavigationControl(), "top-left");
-
-        const switchToFallback = () => {
-          if (fallbackAppliedRef.current || disposed) return;
-          fallbackAppliedRef.current = true;
-          map.setStyle(FALLBACK_STYLE as never);
+        const transformRequest = (url: string, resourceType?: string) => {
+          if (resourceType === "Tile" && !url.includes("geo.sabzevar.ir")) {
+            return { url: appendTileKey(url) };
+          }
+          return { url };
         };
 
-        fallbackTimer = window.setTimeout(() => {
-          if (!disposed && !readyRef.current) switchToFallback();
-        }, 5000);
-
-        map.on("load", () => {
-          if (disposed) return;
+        function installOverlays(map: MapInstance) {
+          if (disposed || mapRef.current !== map) return;
           if (fallbackTimer) window.clearTimeout(fallbackTimer);
-          readyRef.current = true;
 
-          map.addSource(ROUTES_SOURCE, {
-            type: "geojson",
-            data: { type: "FeatureCollection", features: [] },
-          });
+          if (!map.getSource(ROUTES_SOURCE)) {
+            map.addSource(ROUTES_SOURCE, {
+              type: "geojson",
+              data: { type: "FeatureCollection", features: [] },
+            });
 
-          map.addLayer({
-            id: ROUTES_LAYER,
-            type: "line",
-            source: ROUTES_SOURCE,
-            layout: { "line-join": "round", "line-cap": "round" },
-            paint: {
-              "line-color": ["get", "color"],
-              "line-width": 4,
-              "line-opacity": 0.75,
-            },
-          });
-
-          map.addSource(ENDPOINTS_SOURCE, {
-            type: "geojson",
-            data: { type: "FeatureCollection", features: [] },
-          });
-
-          setMapReady(true);
-        });
-
-        map.on("error", (error) => {
-          const errorText = String((error as { error?: unknown }).error ?? "");
-          if (
-            !fallbackAppliedRef.current &&
-            (errorText.includes("AJAXError") ||
-              errorText.includes("sprite") ||
-              errorText.includes("could not be loaded"))
-          ) {
-            switchToFallback();
+            map.addLayer({
+              id: ROUTES_LAYER,
+              type: "line",
+              source: ROUTES_SOURCE,
+              layout: { "line-join": "round", "line-cap": "round" },
+              paint: {
+                "line-color": ["get", "color"],
+                "line-width": 4,
+                "line-opacity": 0.75,
+              },
+            });
           }
-        });
+
+          if (!map.getSource(ENDPOINTS_SOURCE)) {
+            map.addSource(ENDPOINTS_SOURCE, {
+              type: "geojson",
+              data: { type: "FeatureCollection", features: [] },
+            });
+          }
+
+          readyRef.current = true;
+          setMapReady(true);
+          setStyleEpoch((epoch) => epoch + 1);
+        }
+
+        function useFallback() {
+          if (disposed || fallbackAppliedRef.current) return;
+          fallbackAppliedRef.current = true;
+          try {
+            mapRef.current?.remove();
+          } catch {
+            // The hung map may already be detached.
+          }
+          mapRef.current = null;
+          readyRef.current = false;
+          createMap(FALLBACK_STYLE);
+        }
+
+        function createMap(style: unknown) {
+          if (!mapContainerRef.current || disposed) return;
+
+          const map = new maplibregl.Map({
+            container: mapContainerRef.current,
+            style: style as never,
+            center: SABZEVAR_MAP.defaultCenter,
+            zoom: SABZEVAR_MAP.defaultZoom,
+            pitch: SABZEVAR_MAP.pitch,
+            bearing: SABZEVAR_MAP.bearing,
+            attributionControl: false,
+            dragRotate: false,
+            touchPitch: false,
+            transformRequest,
+          });
+
+          mapRef.current = map;
+          map.addControl(new maplibregl.NavigationControl(), "top-left");
+
+          let loggedError = false;
+          map.on("style.load", () => installOverlays(map));
+          map.on("error", (error) => {
+            const errorText = String((error as { error?: unknown }).error ?? error);
+            if (!loggedError) {
+              loggedError = true;
+              console.error(errorText);
+            }
+            if (
+              !fallbackAppliedRef.current &&
+              (errorText.includes("AJAXError") ||
+                errorText.includes("sprite") ||
+                errorText.includes("glyph") ||
+                errorText.includes("could not be loaded") ||
+                errorText.includes("Failed to fetch"))
+            ) {
+              window.setTimeout(useFallback, 0);
+            }
+          });
+        }
+
+        createMap(structuredClone(sabzevarStyle));
+
+        fallbackTimer = window.setTimeout(() => {
+          if (!disposed && !readyRef.current) useFallback();
+        }, 8000);
       })
       .catch(console.error);
 
@@ -304,7 +334,7 @@ export function VehicleMap({
 
     const endpointsSource = map.getSource(ENDPOINTS_SOURCE) as import("maplibre-gl").GeoJSONSource | undefined;
     endpointsSource?.setData(buildEndpointsGeoJson(filteredVehicles, visibleIds));
-  }, [mapReady, routes, filteredVehicles, visibleIds]);
+  }, [mapReady, routes, filteredVehicles, visibleIds, styleEpoch]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -336,7 +366,7 @@ export function VehicleMap({
   useEffect(() => {
     const map = mapRef.current;
     const maplibregl = maplibreRef.current;
-    if (!map || !maplibregl || !mapReady || routesLoading) return;
+    if (!map || !maplibregl || !mapReady) return;
 
     const existingIds = new Set(vehicleMarkersRef.current.keys());
     const neededIds = new Set(filteredVehicles.map((v) => v.id));
@@ -396,13 +426,12 @@ export function VehicleMap({
   }, [
     filteredVehicles,
     mapReady,
-    routesLoading,
     selectVehicle,
     selectedVehicleId,
   ]);
 
   useEffect(() => {
-    if (!mapReady || routesLoading) return;
+    if (!mapReady) return;
 
     const tick = (now: number) => {
       filteredVehicles.forEach((vehicle) => {
@@ -453,7 +482,6 @@ export function VehicleMap({
     filteredVehicles,
     mapReady,
     routeMap,
-    routesLoading,
     selectedVehicleId,
   ]);
 
@@ -476,13 +504,11 @@ export function VehicleMap({
   return (
     <div className="relative h-full w-full">
       <div ref={mapContainerRef} className="h-full w-full" />
-      {(!mapReady || routesLoading) && (
+      {!mapReady && (
         <div className="absolute inset-0 flex items-center justify-center bg-slate-100/80 backdrop-blur-sm">
           <div className="text-center">
             <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
-            <p className="mt-3 text-sm text-slate-500">
-              {!mapReady ? "در حال بارگذاری نقشه سبزوار..." : "در حال محاسبه مسیرها..."}
-            </p>
+            <p className="mt-3 text-sm text-slate-500">در حال بارگذاری نقشه سبزوار...</p>
           </div>
         </div>
       )}

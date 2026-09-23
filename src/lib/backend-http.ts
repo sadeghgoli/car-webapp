@@ -52,6 +52,9 @@ export function backendHttpRequest(input: {
       },
     );
 
+    req.setTimeout(15000, () => {
+      req.destroy(new Error("backend request timed out"));
+    });
     req.on("error", reject);
     if (payload) {
       req.write(payload);
