@@ -173,13 +173,35 @@ export async function sendLoginOtp(
     }
   }
 
-  const otpCode = String(Math.floor(Math.random() * 100_000)).padStart(5, "0");
-  await ssoFetch(SSO_API_URL, "/api/auth/second-login/send-otp", {
-    phoneNumber: normalizedPhone,
-    melliCode: normalizedMelli,
-    otpCode,
-  });
+  const generatedOtp = String(Math.floor(Math.random() * 100_000)).padStart(5, "0");
+  const envelope = await ssoFetch<Record<string, unknown>>(
+    SSO_API_URL,
+    "/api/auth/second-login/send-otp",
+    {
+      phoneNumber: normalizedPhone,
+      melliCode: normalizedMelli,
+      otpCode: generatedOtp,
+    },
+  );
+  const otpCode = extractOtpCode(envelope.data) ?? extractOtpCode(envelope) ?? generatedOtp;
   return { phoneNumber: normalizedPhone, otpCode };
+}
+
+function extractOtpCode(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  for (const key of ["otpCode", "OtpCode", "code", "verificationCode", "otp"]) {
+    const raw = record[key];
+    if (typeof raw === "number" && Number.isInteger(raw) && raw >= 0 && raw < 100_000) {
+      return String(raw).padStart(5, "0");
+    }
+    if (typeof raw === "string") {
+      const digits = normalizeDigits(raw);
+      if (digits.length === 5) return digits;
+    }
+  }
+  if ("data" in record) return extractOtpCode(record.data);
+  return null;
 }
 
 export async function verifyLoginOtp(
