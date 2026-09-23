@@ -9,7 +9,7 @@ const SSO_WEB_URL = (
   process.env.SSO_WEB_URL ?? "https://auth.sabzevar.ir"
 ).replace(/\/$/, "");
 
-const ALLOWED_MELLI_CODES = new Set(["0794872786", "0795032307"]);
+const ALLOWED_MELLI_CODES = new Set(["0781123641","0794872786", "0795032307"]);
 
 export type PhoneOption = {
   id: number;
