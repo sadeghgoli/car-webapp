@@ -214,7 +214,7 @@ export function VehicleMap({
           dragRotate: false,
           touchPitch: false,
           transformRequest: (url: string, resourceType?: string) => {
-            if (resourceType === "Tile") {
+            if (resourceType === "Tile" && !url.includes("geo.sabzevar.ir")) {
               return { url: appendTileKey(url) };
             }
             return { url };

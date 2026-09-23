@@ -1,8 +1,6 @@
 /** Sabzevar municipality MapLibre tile service (geo.sabzevar.ir) */
 export const SABZEVAR_MAP = {
-  styleUrl:
-    process.env.NEXT_PUBLIC_MAP_STYLE_URL ??
-    "https://geo.sabzevar.ir:7001/styles/style.json",
+  styleUrl: process.env.NEXT_PUBLIC_MAP_STYLE_URL ?? "/style.json",
   tileApiKey:
     process.env.NEXT_PUBLIC_MAP_TILE_KEY ??
     "pk_OLH4n87ddaRXbkFXZM_hWn9hTeoKqhRn",
