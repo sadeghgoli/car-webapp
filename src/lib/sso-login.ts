@@ -1,5 +1,3 @@
-import http from "node:http";
-import https from "node:https";
 import { CATEGORIES } from "@/lib/mock-data";
 import type { AuthUser } from "@/types";
 
@@ -187,25 +185,17 @@ const SMS_TOKEN =
 
 function sendLoginSms(phoneNumber: string, otpCode: string): Promise<void> {
   const body = `کد ورود : ${otpCode}\nمدیریت فناوری اطلاعات شهرداری سبزوار`;
-  const targets: Array<{ url: string; host?: string }> = [];
-  if (process.env.SMS_SEND_URL) {
-    targets.push({ url: process.env.SMS_SEND_URL, host: process.env.SMS_HOST });
-  }
-  targets.push(
-    {
-      url: "http://192.168.1.30/SubSystems/SMS/webservices/sms_send.aspx",
-      host: "erp.sabzevar.ir",
-    },
-    {
-      url: "http://erp.sabzevar.ir/SubSystems/SMS/webservices/sms_send.aspx",
-    },
-  );
+  const targets = [
+    process.env.SMS_SEND_URL,
+    "http://erp.sabzevar.ir/SubSystems/SMS/webservices/sms_send.aspx",
+    "http://192.168.1.30/SubSystems/SMS/webservices/sms_send.aspx",
+  ].filter((url): url is string => Boolean(url));
 
   return (async () => {
     let lastError = "خطا در اتصال به سرویس پیامک";
     for (const target of targets) {
       try {
-        await requestSmsGateway(target.url, phoneNumber, body, target.host);
+        await requestSmsGateway(target, phoneNumber, body);
         return;
       } catch (error) {
         lastError = error instanceof Error ? error.message : lastError;
@@ -215,65 +205,38 @@ function sendLoginSms(phoneNumber: string, otpCode: string): Promise<void> {
   })();
 }
 
-function requestSmsGateway(
+async function requestSmsGateway(
   sendUrl: string,
   phoneNumber: string,
   body: string,
-  hostHeader?: string,
 ): Promise<void> {
   const url = new URL(sendUrl);
   url.searchParams.set("Token", SMS_TOKEN);
   url.searchParams.set("Num", phoneNumber);
   url.searchParams.set("Body", body);
-  const lib = url.protocol === "https:" ? https : http;
 
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const finish = (error?: SsoRequestError) => {
-      if (settled) return;
-      settled = true;
-      if (error) reject(error);
-      else resolve();
-    };
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "GET",
+      cache: "no-store",
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message.toLowerCase() : "";
+    if (
+      message.includes("closed") ||
+      message.includes("reset") ||
+      message.includes("hang up")
+    ) {
+      return;
+    }
+    throw new SsoRequestError(502, "خطا در اتصال به سرویس پیامک");
+  }
 
-    const req = lib.request(
-      {
-        protocol: url.protocol,
-        hostname: url.hostname,
-        port: url.port || (url.protocol === "https:" ? 443 : 80),
-        path: `${url.pathname}${url.search}`,
-        method: "GET",
-        headers: hostHeader ? { Host: hostHeader } : undefined,
-        timeout: 20_000,
-      },
-      (response) => {
-        response.resume();
-        const status = response.statusCode ?? 502;
-        if (status >= 400) {
-          finish(new SsoRequestError(status, "ارسال پیامک ناموفق بود"));
-          return;
-        }
-        finish();
-      },
-    );
-    req.on("timeout", () => {
-      req.destroy();
-      finish(new SsoRequestError(504, "تایم‌اوت اتصال به سرویس پیامک"));
-    });
-    req.on("error", (error) => {
-      const message = error.message.toLowerCase();
-      if (
-        message.includes("closed") ||
-        message.includes("reset") ||
-        message.includes("hang up")
-      ) {
-        finish();
-        return;
-      }
-      finish(new SsoRequestError(502, "خطا در اتصال به سرویس پیامک"));
-    });
-    req.end();
-  });
+  if (!response.ok) {
+    throw new SsoRequestError(response.status, "ارسال پیامک ناموفق بود");
+  }
 }
 
 export async function verifyLoginOtp(
